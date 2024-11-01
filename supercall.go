@@ -1,18 +1,24 @@
 package main
 
-import (
-	"C"
-	"syscall"
-	"unsafe"
-)
+/*
+#cgo CFLAGS: -I/path/to/headers
+#cgo LDFLAGS: -L/path/to/libs -llibname
+#include <sys/types.h>
+#include <sys/resource.h>
+*/
+import "C"
+
 import (
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
 	"strings"
+	"syscall"
+	"unsafe"
 )
 
+// Constants
 const (
 	MAJOR          = 0
 	MINOR          = 11
@@ -30,22 +36,23 @@ const (
 	SUPERCALL_SU_LIST         = 0x1103
 	SUPERCALL_SU_RESET_PATH   = 0x1111
 	SUPERCALL_SU_GET_SAFEMODE = 0x1112
-	SUPERCALL_SCONTEXT_LEN    = 96 // 根据需要调整大小
+	SUPERCALL_SCONTEXT_LEN    = 96 // Adjust size as needed
 )
 
+// SuProfile structure
 type SuProfile struct {
 	UID      int32
 	ToUID    int32
 	SContext [SUPERCALL_SCONTEXT_LEN]byte
 }
 
-// 将 Rust 的 version 和 command 组合函数转换为 Go
+// Combine version and command into a single integer
 func verAndCmd(cmd int64) int64 {
 	versionCode := ((MAJOR << 16) + (MINOR << 8) + PATCH)
 	return (int64(versionCode) << 32) | (0x1158 << 16) | (cmd & 0xFFFF)
 }
 
-// 调用系统调用
+// Call system call with provided arguments
 func syscallSupercall(key *C.char, cmd int64, args ...interface{}) int64 {
 	ret, _, errno := syscall.Syscall(__NR_SUPERCALL, uintptr(unsafe.Pointer(key)), uintptr(verAndCmd(cmd)), uintptr(unsafe.Pointer(&args)))
 	if ret < 0 {
@@ -54,7 +61,7 @@ func syscallSupercall(key *C.char, cmd int64, args ...interface{}) int64 {
 	return ret
 }
 
-// 处理 SU 授权
+// Handle SU authorization
 func sc_su(key *C.char, profile *SuProfile) int64 {
 	if key == nil {
 		return syscall.EINVAL
@@ -62,7 +69,7 @@ func sc_su(key *C.char, profile *SuProfile) int64 {
 	return syscallSupercall(key, SUPERCALL_SU, profile)
 }
 
-// 撤销 UID
+// Revoke UID
 func sc_SuRevokeUid(key *C.char, uid uint32) int64 {
 	if key == nil {
 		return syscall.EINVAL
@@ -70,7 +77,7 @@ func sc_SuRevokeUid(key *C.char, uid uint32) int64 {
 	return syscallSupercall(key, SUPERCALL_SU_REVOKE_UID, uid)
 }
 
-// 授权 UID
+// Grant UID
 func sc_SuGrantUid(key *C.char, profile *SuProfile) int64 {
 	if key == nil {
 		return syscall.EINVAL
@@ -78,7 +85,7 @@ func sc_SuGrantUid(key *C.char, profile *SuProfile) int64 {
 	return syscallSupercall(key, SUPERCALL_SU_GRANT_UID, profile)
 }
 
-// 记录日志到内核
+// Log message to kernel
 func sc_Klog(key *C.char, msg *C.char) int64 {
 	if key == nil || msg == nil {
 		return syscall.EINVAL
@@ -86,7 +93,7 @@ func sc_Klog(key *C.char, msg *C.char) int64 {
 	return syscallSupercall(key, SUPERCALL_KLOG, msg)
 }
 
-// 获取 Kernel Patch 版本
+// Get Kernel Patch version
 func scKpVer(key *C.char) (uint32, error) {
 	if key == nil {
 		return 0, fmt.Errorf("invalid key")
@@ -98,7 +105,7 @@ func scKpVer(key *C.char) (uint32, error) {
 	return uint32(ret), nil
 }
 
-// 获取 Kernel 版本
+// Get Kernel version
 func scKVer(key *C.char) (uint32, error) {
 	if key == nil {
 		return 0, fmt.Errorf("invalid key")
@@ -109,24 +116,26 @@ func scKVer(key *C.char) (uint32, error) {
 	}
 	return uint32(ret), nil
 }
-func initLoadSuPath(superkey *C.char) {
+
+// Initialize and load SU path from file
+func InitLoadSUPath(superkey *C.char) {
 	suPathFile := "/data/adb/ap/su_path"
 
-	// 读取 su_path 文件
+	// Read SU path file
 	suPath, err := ioutil.ReadFile(suPathFile)
 	if err != nil {
 		fmt.Printf("Failed to read su_path file: %v\n", err)
 		return
 	}
 
-	// 去除换行符
+	// Trim whitespace
 	suPathStr := strings.TrimSpace(string(suPath))
 
-	// 将路径转换为 C 字符串
+	// Convert path to C string
 	suPathCStr := C.CString(suPathStr)
 	defer C.free(unsafe.Pointer(suPathCStr))
 
-	// 设置 SU 路径
+	// Set SU path
 	if superkey != nil {
 		result := scSuResetPath(superkey, suPathCStr)
 		if result == 0 {
@@ -138,12 +147,14 @@ func initLoadSuPath(superkey *C.char) {
 		fmt.Println("Superkey is None, skipping...")
 	}
 }
+
+// Reset SU path
 func scSuResetPath(key *C.char, path *C.char) int64 {
 	if key == nil || path == nil {
 		return syscall.EINVAL
 	}
 
-	// 执行系统调用
+	// Execute system call
 	result, _, errno := syscall.Syscall(
 		__NR_SUPERCALL,
 		uintptr(unsafe.Pointer(key)),
@@ -156,109 +167,121 @@ func scSuResetPath(key *C.char, path *C.char) int64 {
 	}
 	return int64(result)
 }
+
+// Set environment variable
 func setEnvVar(key string, value string) error {
 	keyC := C.CString(key)
-	defer C.free(unsafe.Pointer(keyC)) // 确保释放内存
+	defer C.free(unsafe.Pointer(keyC)) // Ensure memory is freed
 
 	valueC := C.CString(value)
-	defer C.free(unsafe.Pointer(valueC)) // 确保释放内存
+	defer C.free(unsafe.Pointer(valueC)) // Ensure memory is freed
 
-	// 使用 syscall 设置环境变量
+	// Set environment variable using syscall
 	if err := syscall.Setenv(key, value); err != nil {
 		return err
 	}
 
 	return nil
 }
+
+// Handle privilege APD profile
 func privilegeAPDProfile(superkey *string) {
 	allAllowCtx := "u:r:magisk:s0"
 	profile := SuProfile{
-		UID:   int32(os.Getpid()), // 获取当前进程的 PID
+		UID:   int32(os.Getpid()), // Get current process PID
 		ToUID: 0,
 	}
 	copy(profile.SContext[:], []byte(allAllowCtx))
 
 	if superkey != nil {
 		key := *superkey
-		result := sc_su(key, &profile) // 调用相应的系统调用
+		result := sc_su(key, &profile) // Call corresponding system call
 		log.Printf("[privilege_apd_profile] result = %d", result)
 	}
 }
+
+// Allow UIDs
 func scSuAllowUIDs(key string, buf []uint32) int64 {
 	if key == "" {
-		return -unix.EINVAL // 返回无效参数错误
+		return -unix.EINVAL // Return invalid parameter error
 	}
 	if len(buf) == 0 {
-		return -unix.EINVAL // 返回无效参数错误
+		return -unix.EINVAL // Return invalid parameter error
 	}
 
 	keyCStr := unix.BytePtrFromString(key)
-	bufPtr := unsafe.Pointer(&buf[0]) // 获取 buf 的指针
+	bufPtr := unsafe.Pointer(&buf[0]) // Get pointer to buf
 
 	ret, _, errno := unix.Syscall(
-		__NR_SUPERCALL, // 系统调用号
+		__NR_SUPERCALL, // System call number
 		uintptr(unsafe.Pointer(keyCStr)),
 		uintptr(verAndCmd(SUPERCALL_SU_LIST)),
 		uintptr(bufPtr),
-		uintptr(len(buf)), // buf 的长度
+		uintptr(len(buf)), // Length of buf
 	)
 
 	if errno != 0 {
-		return -int64(errno) // 返回错误代码
+		return -int64(errno) // Return error code
 	}
-	return ret // 返回系统调用的返回值
+	return ret // Return system call return value
 }
+
+// Get number of UIDs
 func scSuUidNums(key string) int64 {
 	if key == "" {
-		return -unix.EINVAL // 返回无效参数错误
+		return -unix.EINVAL // Return invalid parameter error
 	}
 
 	keyCStr := unix.BytePtrFromString(key)
 
 	ret, _, errno := unix.Syscall(
-		__NR_SUPERCALL, // 系统调用号
+		__NR_SUPERCALL, // System call number
 		uintptr(unsafe.Pointer(keyCStr)),
 		uintptr(verAndCmd(SUPERCALL_SU_NUMS)),
-		0, // 不需要额外参数
+		0, // No additional parameters needed
 	)
 
 	if errno != 0 {
-		return -int64(errno) // 返回错误代码
+		return -int64(errno) // Return error code
 	}
-	return ret // 返回系统调用的返回值
+	return ret // Return system call return value
 }
+
+// Get safe mode status
 func scSuGetSafemode(key string) int64 {
 	if key == "" {
-		// 日志记录：超密钥为空，告知不在安全模式
-		logWarn("[scSuGetSafemode] null superkey, tell apd we are not in safemode!")
+		// Log warning: super key is null, inform we are not in safe mode
+		log.Println("[scSuGetSafemode] null superkey, tell apd we are not in safemode!")
 		return 0
 	}
 
 	keyCStr := unix.BytePtrFromString(key)
 
-	// 执行系统调用
+	// Execute system call
 	ret, _, errno := unix.Syscall(
-		__NR_SUPERCALL, // 系统调用号
+		__NR_SUPERCALL, // System call number
 		uintptr(unsafe.Pointer(keyCStr)),
 		uintptr(verAndCmd(SUPERCALL_SU_GET_SAFEMODE)),
-		0, // 不需要额外参数
+		0, // No additional parameters needed
 	)
 
 	if errno != 0 {
-		logWarn("[scSuGetSafemode] syscall error: %v", errno)
-		return -int64(errno) // 返回错误代码
+		log.Printf("[scSuGetSafemode] syscall error: %v", errno)
+		return -int64(errno) // Return error code
 	}
 
-	return ret // 返回系统调用的返回值
+	return ret // Return system call return value
 }
+
+// Set application module exclusion
 func scSetApModExclude(key string, uid int64, exclude int32) int64 {
 	return scKstorageWrite(
 		key,
 		KSTORAGE_EXCLUDE_LIST_GROUP,
 		uid,
-		unsafe.Pointer(&exclude), // 指向 exclude 的指针
+		unsafe.Pointer(&exclude), // Pointer to exclude
 		0,
-		int32(unsafe.Sizeof(exclude)), // exclude 的大小
+		int32(unsafe.Sizeof(exclude)), // Size of exclude
 	)
 }
 

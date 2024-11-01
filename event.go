@@ -14,7 +14,7 @@ func execCommand(command string, args []string) error {
 }
 func on_postdata_fs(superkey string) {
 	Umask(0)
-
+	InitLoadSUPath(superkey)
 	//initLoadPackageUIDConfig(superkey)
 	//initLoadSUPath(superkey)
 
