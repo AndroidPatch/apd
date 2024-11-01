@@ -36,11 +36,11 @@ func main() {
 	superkey := "none"
 	flag.StringVar(&superkey, "s", "none", "superkey")
 	flag.Parse()
-	fmt.Println("key", superkey)
+	//fmt.Println("key", superkey)
 	if superkey != "none" {
 		args = os.Args[3:]
 	}
-	fmt.Println(args)
+	//fmt.Println(args)
 	if args[0] == "module" {
 		if args[1] == "test" {
 			test := args[2]

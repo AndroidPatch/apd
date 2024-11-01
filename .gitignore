@@ -16,10 +16,10 @@
 
 # Dependency directories (remove the comment below to include it)
 # vendor/
-
+apd_go
 # Go workspace file
 go.work
 go.work.sum
-
+.vs
 # env file
 .env
