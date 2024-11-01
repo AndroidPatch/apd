@@ -1,4 +1,4 @@
-module github.com/AndroidPatch/apd_go
+module github.com/AndroidPatch/apd
 
 go 1.20
 
