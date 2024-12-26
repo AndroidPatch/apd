@@ -102,6 +102,9 @@ func main() {
 	if args[0] == "boot-completed" { //Trigger `boot-completed` event
 		on_boot_completed(superkey)
 	}
+	if args[0] == "supercall" { //Trigger `boot-completed` event
+		test(superkey)
+	}
 	if args[0] == "getprop" {
 		value, err := getprop(args[1])
 		//value, err := getprop("vendor.post_boot.parsed")
