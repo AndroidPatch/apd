@@ -1,3 +1,6 @@
+//go:build !android || !cgo
+// +build !android !cgo
+
 package main
 
 import (
@@ -14,15 +17,8 @@ import (
 )
 
 // getprop sys.boot_completed
-const (
-	bind_mount_file = "/data/adb/.bind_mount_enable"
-	temp_dir_legacy = "/sbin"
-	temp_dir        = "/debug_ramdisk"
-)
 
 func ensureBootCompleted() error {
-	// 检查系统启动是否完成的逻辑
-
 	value, err := getprop("sys.boot_completed")
 
 	if err != nil {
@@ -41,16 +37,11 @@ func getEnv(key string) (string, bool) {
 	return value, exists
 }
 func getprop(prop string) (string, error) {
-	// 执行 getprop 命令
 	cmd := exec.Command("getprop", prop)
-
-	// 获取命令输出
-	output, err := cmd.CombinedOutput() // 使用 CombinedOutput 获取 stdout 和 stderr
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("error running getprop: %w, output: %s", err, string(output))
 	}
-
-	// 返回去除换行符的输出
 	return strings.TrimSpace(string(output)), nil
 }
 func ensureCleanDir(dir string) error {
@@ -83,13 +74,22 @@ func ensureBinary(path string) error {
 func isSafeMode(superkey *string) bool {
 	safemode, err := getprop("persist.sys.safemode")
 	if err == nil && safemode == "1" {
-		log.Printf("safemode: true")
+		Info("safemode: true")
 		return true
 	}
-	log.Printf("safemode: false")
+	Info("safemode: false")
 	if superkey != nil {
-		// 处理 superkey
-		return false // 处理逻辑未实现
+		ret := scSuGetSafemode(*superkey)
+		if ret == 1 {
+			Info("scSuGetSafemode: safemode active")
+			return true
+		} else if ret == 0 {
+			Info("scSuGetSafemode: normal mode")
+			return false
+		} else {
+			Error("scSuGetSafemode failed: %d", ret)
+			return false
+		}
 	}
 	return false
 }
@@ -109,9 +109,9 @@ func isOverlayFSSupported() (bool, error) {
 	return false, scanner.Err()
 }
 func shouldEnableOverlay() bool {
-	bindMountExists := fileExists(bind_mount_file)
+	forceOverlayExists := fileExists(force_overlayfs_file)
 	overlaySupported, _ := isOverlayFSSupported()
-	return !bindMountExists && overlaySupported
+	return forceOverlayExists && overlaySupported
 }
 func fileExists(filename string) bool {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
@@ -128,10 +128,8 @@ func getTmpPath() string {
 	}
 	return ""
 }
-func switchCgroups() error {
-	pid := os.Getpid() // 获取当前进程 ID
-
-	// 切换到各个 cgroup
+func switchCgroups(pid int) error {
+	//pid := os.Getpid()
 	if err := switchCgroup("/acct", pid); err != nil {
 		return err
 	}
@@ -141,8 +139,6 @@ func switchCgroups() error {
 	if err := switchCgroup("/sys/fs/cgroup", pid); err != nil {
 		return err
 	}
-
-	// 检查 ro.config.per_app_memcg 属性
 	if prop, _ := getprop("ro.config.per_app_memcg"); prop == "false" {
 		return switchCgroup("/dev/memcg/apps", pid)
 	}
@@ -152,21 +148,16 @@ func switchCgroups() error {
 }
 func switchCgroup(grp string, pid int) error {
 	path := filepath.Join(grp, "cgroup.procs")
-
-	// 检查路径是否存在
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return nil // 如果路径不存在，直接返回
+		return nil
 	}
-
-	// 以附加模式打开文件
 	fp, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open cgroup.procs: %w", err)
 	}
 	defer fp.Close()
 
-	// 将进程 ID 写入文件
-	if _, err := fmt.Fprintln(fp, pid); err != nil {
+	if _, err := fmt.Fprintf(fp, "%d", pid); err != nil {
 		return fmt.Errorf("failed to write pid to cgroup.procs: %w", err)
 	}
 
@@ -175,18 +166,15 @@ func switchCgroup(grp string, pid int) error {
 func switchMntNs(pid int) error {
 	path := fmt.Sprintf("/proc/%d/ns/mnt", pid)
 
-	// 检查路径是否存在
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("mount namespace for PID %d does not exist", pid)
 	}
 
-	// 使用 setns 切换挂载命名空间
 	cmd := exec.Command("setns", path, "0")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to switch mount namespace: %w", err)
 	}
 
-	// 恢复当前工作目录
 	currentDir, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
@@ -198,14 +186,13 @@ func switchMntNs(pid int) error {
 	return nil
 }
 func unshareMntNs() error {
-	// 使用 unshare 创建新的挂载命名空间
+
 	if err := unix.Unshare(unix.CLONE_NEWNS); err != nil {
 		return fmt.Errorf("unshare mount namespace failed: %w", err)
 	}
 	return nil
 }
 func Umask(mask uint32) {
-	// 使用 unix.Unmask 设置 umask
 	unix.Umask(int(mask))
 }
 
@@ -221,3 +208,16 @@ func mountImage(imagePath string, mountPoint string) error {
 	}
 	return nil
 }
+
+func Logcat(level string, format string, a ...interface{}) error {
+	msg := fmt.Sprintf(format, a...)
+	return Logcat_inter("APatchD", level, msg)
+}
+func Logcat_inter(tag, priority, message string) error {
+	cmd := exec.Command("log", "-t", tag, "-p", priority, message)
+	return cmd.Run()
+}
+
+func Info(format string, a ...interface{})  { Logcat("I", format, a...) }
+func Warn(format string, a ...interface{})  { Logcat("W", format, a...) }
+func Error(format string, a ...interface{}) { Logcat("E", format, a...) }

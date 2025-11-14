@@ -19,7 +19,29 @@ func printbanner() {
    `
 	fmt.Println(banner)
 }
+
+func printUsage() {
+
+	fmt.Fprintf(os.Stderr, "Usage: %s [global options] <command> [arguments]\n\n", filepath.Base(os.Args[0]))
+
+	fmt.Fprintf(os.Stderr, "Commands:\n")
+	fmt.Fprintf(os.Stderr, "  module install <path>      Install a module from the given path.\n")
+	fmt.Fprintf(os.Stderr, "  module test <func>         Run a test function.\n")
+	fmt.Fprintf(os.Stderr, "  module list                List all installed modules.\n")
+	fmt.Fprintf(os.Stderr, "  module enable <name>       Enable a specific module.\n")
+	fmt.Fprintf(os.Stderr, "  module disable <name>      Disable a specific module.\n")
+	fmt.Fprintf(os.Stderr, "  module disable_all_modules Disable all modules.\n")
+	fmt.Fprintf(os.Stderr, "  post-fs-data               Trigger the post-fs-data event.\n")
+	fmt.Fprintf(os.Stderr, "  services                   Trigger the services event.\n")
+	fmt.Fprintf(os.Stderr, "  boot-completed             Trigger the boot-completed event.\n")
+	fmt.Fprintf(os.Stderr, "  getprop <key>              Get a system property value.\n")
+
+	fmt.Fprintf(os.Stderr, "\nGlobal Options:\n")
+	flag.PrintDefaults()
+}
+
 func main() {
+	flag.Usage = printUsage
 	programName := filepath.Base(os.Args[0])
 	if strings.HasSuffix(programName, "su") || strings.HasSuffix(programName, "kp") {
 		if err := create_root_shell(); err != nil {
@@ -28,41 +50,57 @@ func main() {
 		}
 		os.Exit(0)
 	}
-	if len(os.Args) < 2 {
-		fmt.Println("Usage: apd module install <module-name>")
-		return
-	}
-	args := os.Args[1:]
-	superkey := "none"
-	flag.StringVar(&superkey, "s", "none", "superkey")
-	flag.Parse()
-	//fmt.Println("key", superkey)
-	if superkey != "none" {
-		args = os.Args[3:]
-	}
-	//fmt.Println(args)
-	if args[0] == "module" {
-		if args[1] == "test" {
-			test := args[2]
-			fmt.Printf("test function: %s\n", test)
-
+	for _, arg := range os.Args[1:] {
+		if arg == "-V" {
+			fmt.Printf("apd %s\n", Version)
 			return
 		}
-		if args[1] == "install" {
+	}
+	var superkey string
+	flag.StringVar(&superkey, "s", "none", "Superkey for privileged operations.")
 
+	flag.Parse()
+
+	if len(flag.Args()) == 0 {
+		flag.Usage()
+		return
+	}
+	args := flag.Args()
+
+	if len(args) < 1 {
+		flag.Usage()
+		return
+	}
+
+	switch args[0] {
+	case "module":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Error: missing module subcommand.\n")
+			printUsage()
+			return
+		}
+		moduleCmd := args[1]
+		switch moduleCmd {
+		case "test":
+			if len(args) < 3 {
+				break
+			}
+			fmt.Printf("test function: %s\n", args[2])
+			return
+		case "install":
+			if len(args) < 3 {
+				break
+			}
 			modulepath := args[2]
 			fmt.Printf("Installing module: %s\n", modulepath)
 			installModule(modulepath)
 			return
-		}
-		if args[1] == "list" {
-
+		case "list":
 			modules, err := listModules()
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
 				return
 			}
-			// 将模块转换为JSON格式
 			jsonOutput, err := json.MarshalIndent(modules, "", "  ")
 			if err != nil {
 				fmt.Printf("Error: %v\n", err)
@@ -70,51 +108,54 @@ func main() {
 			}
 			fmt.Println(string(jsonOutput))
 			return
-		}
-		if args[1] == "enable" {
+		case "enable":
+			if len(args) < 3 {
+				break
+			}
 			if err := enableModule(args[2], true); err != nil {
 				fmt.Printf("Error: %v\n", err)
 			}
 			return
-		}
-		if args[1] == "disable" {
+		case "disable":
+			if len(args) < 3 {
+				break
+			}
 			if err := enableModule(args[2], false); err != nil {
 				fmt.Printf("Error: %v\n", err)
 			}
 			return
-		}
-		if args[1] == "disable_all_modules" {
+		case "disable_all_modules":
 			if err := disableAllModulesUpdate(); err != nil {
 				fmt.Printf("Error: %v\n", err)
 			}
 			return
 		}
 
-		fmt.Println("Usage: apd module install <module-name>")
+		fmt.Fprintf(os.Stderr, "Usage: apd module %s <argument>\n", moduleCmd)
 		return
-	}
-	if args[0] == "post-fs-data" { //Trigger `post-fs-data` event
-		on_postdata_fs(superkey)
-	}
-	if args[0] == "services" { //Trigger `services` event
+
+	case "post-fs-data":
+		on_post_fs_data(superkey)
+	case "services":
 		on_services(superkey)
-	}
-	if args[0] == "boot-completed" { //Trigger `boot-completed` event
+	case "boot-completed":
 		on_boot_completed(superkey)
-	}
-	if args[0] == "supercall" { //Trigger `boot-completed` event
+	case "supercall":
 		test(superkey)
-	}
-	if args[0] == "getprop" {
+	case "getprop":
+		if len(args) < 2 {
+			fmt.Fprintf(os.Stderr, "Usage: apd getprop <key>\n")
+			return
+		}
 		value, err := getprop(args[1])
-		//value, err := getprop("vendor.post_boot.parsed")
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
 		}
-
 		fmt.Printf("%s: %s\n", args[1], value)
 
+	default:
+		fmt.Fprintf(os.Stderr, "Error: Unknown command \"%s\"\n", args[0])
+		flag.Usage()
 	}
-
 }

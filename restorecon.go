@@ -1,26 +1,20 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-
-	"errors"
 
 	"golang.org/x/sys/unix"
 )
 
-// Constants
-const (
-	SYSTEM_CON  = "u:object_r:system_file:s0"
-	ADB_CON     = "u:object_r:adb_data_file:s0"
-	UNLABEL_CON = "u:object_r:unlabeled:s0"
-
-	SELINUX_XATTR = "security.selinux"
-)
-
-// lsetFileCon sets the SELinux context for the specified path
 func lsetFileCon(path string, con string) error {
-	return errors.New(path)
+	// Xattr flags: 0 表示覆盖已有属性
+	err := unix.Setxattr(path, "security.selinux", []byte(con), 0)
+	if err != nil {
+		return fmt.Errorf("failed to change SELinux context for %s: %w", path, err)
+	}
+	return nil
 }
 
 // lgetFileCon gets the SELinux context for the specified path
