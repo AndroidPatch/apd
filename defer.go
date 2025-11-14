@@ -61,6 +61,7 @@ const (
 //apd version
 var (
 	// go build -ldflags "-X main.Version=..."
-	Version   string = "11100"
-	GitCommit string = "APatch"
+	Version        string = "11100"
+	Overlay_Source string = "APatch"
+	GitCommit      string = "APatch"
 )

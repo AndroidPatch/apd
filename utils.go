@@ -128,6 +128,9 @@ func getTmpPath() string {
 	}
 	return ""
 }
+func getWorkDir() string {
+	return getTmpPath() + "/workdir/"
+}
 func switchCgroups(pid int) error {
 	//pid := os.Getpid()
 	if err := switchCgroup("/acct", pid); err != nil {

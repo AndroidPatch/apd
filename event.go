@@ -127,7 +127,7 @@ func on_post_fs_data(superkey string) {
 	if err := loadSystemProp(); err != nil {
 		Error("load system.prop failed: %v", err)
 	}
-
+	//magicMount()
 	//if shouldEnableOverlay() {
 	//	if err := mountSystemlessly(moduleDir); err != nil {
 	//		warn(fmt.Sprintf("do systemless mount failed: %v", err))

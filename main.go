@@ -82,10 +82,9 @@ func main() {
 		moduleCmd := args[1]
 		switch moduleCmd {
 		case "test":
-			if len(args) < 3 {
-				break
-			}
-			fmt.Printf("test function: %s\n", args[2])
+
+			magicMount()
+			fmt.Printf("test function")
 			return
 		case "install":
 			if len(args) < 3 {
