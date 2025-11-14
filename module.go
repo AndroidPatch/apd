@@ -346,15 +346,24 @@ func installModule(zip string) error {
 
 	args := []string{"sh", "-c", installer}
 
-	cmd := exec.Command(busybox, args...)
-	cmd.Env = os.Environ()
-	cmd.Env = append(cmd.Env, "ASH_STANDALONE=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=%s;%s", os.Getenv("PATH"), filepath.Dir(binaryDir)))
-	cmd.Env = append(cmd.Env, "APATCH=true")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("APATCH_VER=APatch:%s", Version))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("APATCH_VER_CODE=%s", Version))
-	cmd.Env = append(cmd.Env, "OUTFD=1")
-	cmd.Env = append(cmd.Env, fmt.Sprintf("ZIPFILE=%s", zip))
+	//cmd := exec.Command(busybox, args...)
+	//cmd.Env = os.Environ()
+	//cmd.Env = append(cmd.Env, "ASH_STANDALONE=1")
+	//cmd.Env = append(cmd.Env, fmt.Sprintf("PATH=%s;%s", os.Getenv("PATH"), filepath.Dir(binaryDir)))
+	//cmd.Env = append(cmd.Env, "APATCH=true")
+	//cmd.Env = append(cmd.Env, fmt.Sprintf("APATCH_VER=APatch:%s", Version))
+	//cmd.Env = append(cmd.Env, fmt.Sprintf("APATCH_VER_CODE=%s", Version))
+	//cmd.Env = append(cmd.Env, "OUTFD=1")
+	//cmd.Env = append(cmd.Env, fmt.Sprintf("ZIPFILE=%s", zip))
+
+	env := os.Environ()
+	env = append(env, "ASH_STANDALONE=1")
+	env = append(env, fmt.Sprintf("PATH=%s;%s", os.Getenv("PATH"), filepath.Dir(binaryDir)))
+	env = append(env, "APATCH=true")
+	env = append(env, fmt.Sprintf("APATCH_VER=APatch:%s", Version))
+	env = append(env, fmt.Sprintf("APATCH_VER_CODE=%s", Version))
+	env = append(env, "OUTFD=1")
+	env = append(env, fmt.Sprintf("ZIPFILE=%s", zip))
 	//var out bytes.Buffer
 	//var stderr bytes.Buffer
 	//cmd.Stdout = &out
@@ -366,29 +375,24 @@ func installModule(zip string) error {
 	//	fmt.Printf("stdout: %s\n", out.String())
 	//}
 	//fmt.Println(out.String())
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
-		}
-	}()
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			fmt.Println(scanner.Text())
-		}
-	}()
 
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	if err := cmd.Wait(); err != nil {
-		fmt.Println("installer error:", err)
-	}
+	//stdout, _ := cmd.StdoutPipe()
+	//stderr, _ := cmd.StderrPipe()
+	//go func() {
+	//	io.Copy(os.Stdout, stdout)
+	//}()
+	//go func() {
+	//	io.Copy(os.Stdout, stderr)
+	//}()
+	//if err := cmd.Start(); err != nil {
+	//	return err
+	//}
+	//if err := cmd.Wait(); err != nil {
+	//	fmt.Println("installer error:", err)
+	//}
+
 	markUpdate()
-	return nil
+	return syscall.Exec(busybox, args, env)
 }
 func enableModule(id string, enable bool) error {
 	srcModulePath := filepath.Join(moduleDir, id)
