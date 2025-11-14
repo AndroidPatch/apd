@@ -3,7 +3,6 @@ package main
 import (
 	"archive/zip"
 	"bufio"
-	"bytes"
 	_ "embed"
 	"errors"
 	"fmt"
@@ -301,27 +300,32 @@ func extractFile(f *zip.File, dest string) error {
 func installModule(zip string) error {
 	printbanner()
 	if err := ensureBootCompleted(); err != nil {
+		Error("Boot is not Completed")
 		return err
 	}
 	if err := ensureDirExists(workingDir); err != nil {
+		Error("failed to create working dir: %w", err)
 		return fmt.Errorf("failed to create working dir: %w", err)
 	}
 	if err := ensureDirExists(binaryDir); err != nil {
+		Error("failed to create working dir: %w", err)
 		return fmt.Errorf("failed to create bin dir: %w", err)
 	}
 
 	moduleProp, err := readModuleProp(zip)
 	if err != nil {
+		Error("failed to readProp: %w", err)
 		return err
 	}
 	//fmt.Printf("Module prop: %+v\n", moduleProp)
 
 	moduleID, ok := moduleProp["id"]
 	if moduleID == "" {
-
+		Error("unable to install module, no id found")
 		return errors.New("unable to install module")
 	}
 	if !ok {
+		Error("module id not found in module.prop")
 		return fmt.Errorf("module id not found in module.prop")
 	}
 
@@ -329,17 +333,19 @@ func installModule(zip string) error {
 	//modulesUpdateDir := filepath.Join(moduleUpdateTmpDir, moduleID)
 
 	if err := ensureDirExists(modulesDir); err != nil {
+		Error("failed to create module folder: %w", err)
 		return fmt.Errorf("failed to create module folder: %w", err)
 	}
 
 	err = unzip(zip, modulesDir)
 	if err != nil {
+		Error("Unzip Failed： %w", err)
 		return err
 	}
 	//fmt.Println(modulesUpdateDir)
+
 	args := []string{"sh", "-c", installer}
-	var out bytes.Buffer
-	var stderr bytes.Buffer
+
 	cmd := exec.Command(busybox, args...)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "ASH_STANDALONE=1")
@@ -349,16 +355,38 @@ func installModule(zip string) error {
 	cmd.Env = append(cmd.Env, fmt.Sprintf("APATCH_VER_CODE=%s", Version))
 	cmd.Env = append(cmd.Env, "OUTFD=1")
 	cmd.Env = append(cmd.Env, fmt.Sprintf("ZIPFILE=%s", zip))
-	cmd.Stdout = &out
-	cmd.Stderr = &stderr
+	//var out bytes.Buffer
+	//var stderr bytes.Buffer
+	//cmd.Stdout = &out
+	//cmd.Stderr = &stderr
+	//err = cmd.Run()
+	//if err != nil {
+	//	fmt.Printf("error with:", err)
+	//	fmt.Printf("stderr: %s\n", stderr.String())
+	//	fmt.Printf("stdout: %s\n", out.String())
+	//}
+	//fmt.Println(out.String())
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+	go func() {
+		scanner := bufio.NewScanner(stdout)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
+	go func() {
+		scanner := bufio.NewScanner(stderr)
+		for scanner.Scan() {
+			fmt.Println(scanner.Text())
+		}
+	}()
 
-	err = cmd.Run()
-	if err != nil {
-		fmt.Printf("error with:", err)
-		fmt.Printf("stderr: %s\n", stderr.String())
-		fmt.Printf("stdout: %s\n", out.String())
+	if err := cmd.Start(); err != nil {
+		return err
 	}
-	fmt.Println(out.String())
+	if err := cmd.Wait(); err != nil {
+		fmt.Println("installer error:", err)
+	}
 	markUpdate()
 	return nil
 }
